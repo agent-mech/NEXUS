@@ -1,0 +1,1734 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NEXUS</title>
+<!-- Inline, so the page never asks the server for a favicon it does
+     not serve. A 404 in the console on every load looks like a fault. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%276%27 fill=%27%230d1117%27/%3E%3Ctext x=%2716%27 y=%2722%27 font-family=%27monospace%27 font-size=%2718%27 font-weight=%27bold%27 text-anchor=%27middle%27 fill=%27%2356d4dd%27%3EN%3C/text%3E%3C/svg%3E">
+<style>
+/* ──────────────────────────────────────────────────────────────────────────
+   The terminal client's palette, exactly. #484f58 for the divider rather
+   than #21262d: the latter sat within a shade of both backgrounds either
+   side of it and the divider was invisible.
+   ────────────────────────────────────────────────────────────────────────── */
+:root {
+  --bg:        #0d1117;
+  --rail:      #161b22;
+  --line:      #484f58;
+  --edge:      #30363d;
+  --keys-bg:   #21262d;
+  --text:      #d2d6db;
+  --dim:       #8b949e;
+  --cyan:      #56d4dd;
+  --gold:      #ffd700;
+  --red:       #ff5555;
+  --green:     #00af5f;
+  --blue:      #6495ed;
+  --yellow:    #ffff5f;
+  --grey82:    #d2d6db;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas,
+          "DejaVu Sans Mono", monospace;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; height: 100%;
+  background: var(--bg); color: var(--text);
+  font: 14px/1.5 var(--mono);
+  overflow: hidden;
+}
+button, input, select { font: inherit; color: inherit; }
+
+/* ── sign in ───────────────────────────────────────────────────────────── */
+#gate {
+  position: fixed; inset: 0; display: grid; place-items: center;
+  background: var(--bg); z-index: 20; padding: 16px;
+}
+#gate .panel {
+  width: 100%; max-width: 440px;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: var(--rail); padding: 22px;
+}
+#gate h1 {
+  margin: 0 0 2px; font-size: 20px; letter-spacing: 4px; color: var(--cyan);
+}
+#gate .sub { color: var(--dim); font-size: 12px; margin-bottom: 20px; }
+#gate label { display: block; font-size: 12px; color: var(--dim); margin: 14px 0 5px; }
+#gate input {
+  width: 100%; padding: 9px 10px; background: var(--bg);
+  border: 1px solid var(--edge); border-radius: 4px;
+}
+#gate input:focus { outline: none; border-color: var(--cyan); }
+#gate .row { display: flex; gap: 8px; margin-top: 18px; }
+#gate button {
+  flex: 1; padding: 9px; border-radius: 4px; cursor: pointer;
+  border: 1px solid var(--edge); background: var(--keys-bg);
+}
+#gate button.primary { border-color: var(--cyan); color: var(--cyan); }
+#gate button:hover { border-color: var(--cyan); }
+#gate .tabs { display: flex; gap: 16px; border-bottom: 1px solid var(--edge); }
+#gate .tab {
+  padding: 7px 2px; cursor: pointer; color: var(--dim);
+  border-bottom: 2px solid transparent; font-size: 13px;
+}
+#gate .tab[aria-selected="true"] { color: var(--cyan); border-bottom-color: var(--cyan); }
+#gate .note { font-size: 12px; color: var(--dim); margin-top: 14px; line-height: 1.6; }
+#gate .problem { color: var(--red); font-size: 12px; margin-top: 14px; min-height: 1em; }
+/* Scoped past "#gate input { width: 100% }", which otherwise wins on
+   specificity and stretches the checkbox across the row. */
+#gate .keepline input[type="checkbox"] {
+  width: auto; flex: none; margin: 0 8px 0 0;
+}
+#gate .keepline { display: flex; align-items: center; font-size: 12px;
+                  color: var(--dim); margin-top: 16px; }
+
+/* ── displaced by another window ───────────────────────────────────────── */
+#taken {
+  position: fixed; inset: 0; z-index: 40; display: none;
+  place-items: center; background: var(--bg); padding: 16px;
+}
+#taken.show { display: grid; }
+#taken .panel {
+  width: 100%; max-width: 440px; background: var(--rail);
+  border: 1px solid var(--line); border-radius: 6px;
+  padding: 24px; text-align: center;
+}
+#taken h2 { margin: 0 0 12px; font-size: 16px; color: var(--cyan); }
+#taken p { color: var(--dim); font-size: 13px; line-height: 1.65; margin: 0; }
+#taken .small { font-size: 12px; margin-top: 12px; }
+#taken .row { display: flex; margin-top: 20px; }
+#taken button {
+  flex: 1; padding: 10px; border-radius: 4px; cursor: pointer;
+  border: 1px solid var(--cyan); background: var(--keys-bg); color: var(--cyan);
+}
+#taken button:hover { background: var(--edge); }
+
+/* ── the passkey, shown once ───────────────────────────────────────────── */
+#keyout {
+  position: fixed; inset: 0; z-index: 30; display: none;
+  place-items: center; background: rgba(0,0,0,.75); padding: 16px;
+}
+#keyout.show { display: grid; }
+#keyout .panel {
+  width: 100%; max-width: 560px; background: var(--rail);
+  border: 1px solid var(--red); border-radius: 6px; padding: 22px;
+}
+#keyout h2 { margin: 0 0 10px; font-size: 16px; color: var(--red); }
+#keyout .key {
+  display: block; width: 100%; margin: 14px 0; padding: 12px;
+  background: var(--bg); border: 1px solid var(--edge); border-radius: 4px;
+  color: var(--gold); font: 700 15px/1.5 var(--mono);
+  word-break: break-all; user-select: all; text-align: center;
+}
+#keyout p { color: var(--dim); font-size: 13px; line-height: 1.65; margin: 10px 0; }
+#keyout .row { display: flex; gap: 8px; margin-top: 18px; }
+#keyout button {
+  flex: 1; padding: 10px; border-radius: 4px; cursor: pointer;
+  border: 1px solid var(--edge); background: var(--keys-bg);
+}
+#keyout button:hover { border-color: var(--cyan); }
+#keyout button.primary { border-color: var(--red); color: var(--red); }
+#keyout button.primary:disabled { opacity: .45; cursor: not-allowed; border-color: var(--edge); color: var(--dim); }
+#keyout .ack { display: flex; align-items: flex-start; gap: 8px;
+               font-size: 13px; color: var(--text); margin-top: 16px; }
+#keyout .ack input { width: auto; margin-top: 3px; }
+
+/* ── shell ─────────────────────────────────────────────────────────────── */
+#app { display: none; }
+/* 100dvh, not 100vh: on a phone, vh counts the space behind the browser's
+   own toolbars, which pushes the message box under them. */
+#app.live {
+  display: grid; grid-template-columns: 240px 1fr;
+  height: 100dvh; max-height: 100dvh;
+}
+
+/* min-height: 0 on every grid item that has to shrink.
+   A grid item defaults to min-height: auto, meaning it refuses to be
+   smaller than its content. So the chat pane grew to the height of the
+   whole transcript, pushed #main past the viewport, and never became
+   scrollable - and the message box went off the bottom of the screen with
+   it. These three lines are the entire fix. */
+#rail, #main, #log { min-height: 0; }
+
+#rail {
+  background: var(--rail);
+  /* The divider between the rail and the chat. */
+  border-right: 1px solid var(--line);
+  overflow-y: auto; padding: 10px 0;
+}
+.rail-title {
+  color: var(--dim); font-size: 11px; letter-spacing: 1px;
+  padding: 0 12px; margin: 14px 0 5px; text-transform: uppercase;
+}
+.rail-title.first { margin-top: 0; }
+.rail-item {
+  padding: 3px 12px; cursor: pointer; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; color: var(--text);
+}
+.rail-item:hover { background: var(--keys-bg); }
+.rail-item[aria-current="true"] { background: var(--keys-bg); color: var(--cyan); }
+.rail-empty { padding: 2px 12px; color: var(--dim); font-size: 12px; }
+
+#main { display: grid; grid-template-rows: auto 1fr auto; min-width: 0; }
+
+#topbar {
+  height: 28px; display: flex; align-items: center; gap: 12px;
+  padding: 0 12px; border-bottom: 1px solid var(--line);
+  background: var(--bg); color: var(--dim); font-size: 13px;
+}
+#where { color: var(--cyan); }
+#me { margin-left: auto; }
+
+#log {
+  /* overscroll-behavior stops a flick at the top of the transcript from
+     turning into a pull-to-refresh that throws the session away. */
+  overflow-y: auto; overscroll-behavior: contain; padding: 6px 14px;
+  background: var(--bg); white-space: pre-wrap; word-break: break-word;
+}
+#log .l { min-height: 1.5em; }
+
+#footer { background: var(--bg); }
+#status { height: 22px; padding: 2px 12px; color: var(--dim); font-size: 12px;
+          overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#keys   { height: 22px; padding: 2px 12px; color: var(--dim); font-size: 12px;
+          background: var(--keys-bg); overflow: hidden; white-space: nowrap; }
+#entry  { padding: 0 10px 10px; }
+#entry input {
+  width: 100%; padding: 8px 10px; background: var(--bg);
+  border: 1px solid var(--edge); border-radius: 4px;
+}
+#entry input:focus { outline: none; border-color: var(--cyan); }
+
+/* ── message colouring, matching the terminal client's roles ───────────── */
+.t    { color: var(--dim); }
+.id   { color: var(--dim); }
+.body { color: var(--text); }
+.r-owner     { color: var(--gold); }
+.r-admin     { color: var(--red); }
+.r-moderator { color: var(--blue); }
+.r-helper    { color: var(--green); }
+.r-user      { color: var(--grey82); }
+.r-system    { color: var(--cyan); }
+.sys    { color: var(--cyan); }
+.info   { color: var(--cyan); }
+.warn   { color: var(--yellow); }
+.bad    { color: var(--red); }
+.good   { color: var(--green); }
+.ann    { color: var(--yellow); font-weight: 700; }
+.rule   { color: var(--cyan); }
+.b      { font-weight: 700; }
+
+/* The sidebar is always there on a wide screen, so the toggle would be
+   clutter. It only appears once the sidebar is hidden. */
+#rail-toggle {
+  display: none; background: none; border: 0; cursor: pointer;
+  color: var(--dim); font-size: 17px; line-height: 1;
+  padding: 2px 6px; margin-left: -4px;
+}
+#rail-toggle:hover { color: var(--cyan); }
+
+@media (max-width: 680px) {
+  #app.live { grid-template-columns: 1fr; }
+  #rail { display: none; }
+  #app.live.rail-open { grid-template-columns: 170px 1fr; }
+  #app.live.rail-open #rail { display: block; }
+  #rail-toggle { display: block; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── sign in ──────────────────────────────────────────────────────────── -->
+<div id="gate">
+  <div class="panel">
+    <h1>NEXUS</h1>
+    <div class="sub" id="gate-sub">Connecting…</div>
+
+    <div class="tabs" role="tablist">
+      <div class="tab" id="tab-signin" role="tab" aria-selected="true">Sign in</div>
+      <div class="tab" id="tab-register" role="tab" aria-selected="false">I have an invite</div>
+    </div>
+
+    <form id="form-signin" autocomplete="off">
+      <label for="pk">Passkey</label>
+      <input id="pk" placeholder="NX-XXXXXXXX-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+             spellcheck="false" autocapitalize="off">
+      <div class="keepline">
+        <input type="checkbox" id="keep" checked>
+        <label for="keep" style="margin:0;color:inherit">Stay signed in on this browser</label>
+      </div>
+      <div class="row"><button class="primary" type="submit">Sign in</button></div>
+    </form>
+
+    <form id="form-register" autocomplete="off" hidden>
+      <label for="inv">Invite code</label>
+      <input id="inv" placeholder="TEMP-…" spellcheck="false" autocapitalize="off">
+      <label for="un">Choose a username</label>
+      <input id="un" placeholder="2–32 characters" spellcheck="false" autocapitalize="off">
+      <div class="row"><button class="primary" type="submit">Create account</button></div>
+    </form>
+
+    <div class="problem" id="gate-problem"></div>
+    <div class="note" id="gate-note"></div>
+  </div>
+</div>
+
+<!-- ── signed out because you signed in somewhere else ─────────────────── -->
+<div id="taken" role="dialog" aria-modal="true" aria-labelledby="taken-h">
+  <div class="panel">
+    <h2 id="taken-h">NEXUS is open somewhere else</h2>
+    <p id="taken-why">You signed in from another window, so this one was
+       signed out. Only one NEXUS session can be open at a time.</p>
+    <div class="row">
+      <button class="primary" id="taken-go" type="button">Use NEXUS here</button>
+    </div>
+    <p class="small">That will sign the other one out instead.</p>
+  </div>
+</div>
+
+<!-- ── the passkey, shown once and only here ───────────────────────────── -->
+<div id="keyout" role="dialog" aria-modal="true" aria-labelledby="keyout-h">
+  <div class="panel">
+    <h2 id="keyout-h">Save your passkey now</h2>
+    <p>This is the only time it will ever be shown. It is how you sign in,
+       and nothing else replaces it.</p>
+    <code class="key" id="keyout-key"></code>
+    <p>Nobody can recover it for you — not the person who runs this server,
+       and not a reset link. It is hashed on the server, so it is not stored
+       anywhere it could be read back. Lose it and the account is gone.</p>
+    <div class="row">
+      <button id="keyout-copy" type="button">Copy</button>
+      <button id="keyout-save" type="button">Download as a file</button>
+    </div>
+    <label class="ack">
+      <input type="checkbox" id="keyout-ack">
+      <span>I have saved it somewhere I can get to again.</span>
+    </label>
+    <div class="row">
+      <button class="primary" id="keyout-go" type="button" disabled>Continue</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── the client ───────────────────────────────────────────────────────── -->
+<div id="app">
+  <aside id="rail">
+    <div class="rail-title first">Channels</div>
+    <div id="rail-channels"></div>
+    <div class="rail-title">Direct messages</div>
+    <div id="rail-dms"></div>
+  </aside>
+
+  <section id="main">
+    <div id="topbar">
+      <button id="rail-toggle" type="button" aria-label="Channels"
+              aria-expanded="false" title="Channels">≡</button>
+      <span id="where">#</span>
+      <span id="online"></span>
+      <span id="me"></span>
+    </div>
+    <div id="log" aria-live="polite"></div>
+    <div id="footer">
+      <div id="status"></div>
+      <div id="keys">/help commands  .  Tab complete  .  Up/Down history  .  Esc back to channel</div>
+      <div id="entry">
+        <input id="input" placeholder="Message #general, or /help"
+               spellcheck="false" autocapitalize="sentences" autocomplete="off">
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+"use strict";
+/* ═══════════════════════════════════════════════════════════════════════════
+   NEXUS web client.
+
+   The same server, the same protocol, the same commands. The server speaks
+   WebSocket JSON already, so this talks to it directly - there is no bridge
+   and no second process. It is served by nexus_server.py itself on the port
+   the WebSocket uses, which is what makes the connection same-origin.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const CLIENT_VERSION = "2.0.0-web";
+const SCROLLBACK = 500;
+
+const ROLE_RANK = { user:0, helper:1, moderator:2, admin:3, owner:4, system:5 };
+const ROLE_MARK = { owner:"*", admin:"*", moderator:"o", helper:"." };
+const ROLE_DESC = {
+  user:"Standard member", helper:"Can mint user invites",
+  moderator:"Can warn, mute, kick and view reports",
+  admin:"Can ban, promote and run invites",
+  owner:"Full server control, Guardian access",
+  system:"Internal server identity",
+};
+
+/* ── session ───────────────────────────────────────────────────────────── */
+const S = {
+  ws: null, username: "", publicId: "", role: "user",
+  token: null, channels: [], dms: [],
+  channel: "", dmMode: false, dmTarget: "",
+  buffers: Object.create(null),          // "#general" / "@bob" -> [html, …]
+  history: [], historyAt: -1,
+  reconnectIn: 1000, closedByUs: false,
+};
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g,
+  (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+const rank = () => ROLE_RANK[S.role] ?? 0;
+const roleClass = (r) => "r-" + (ROLE_RANK[r] !== undefined ? r : "user");
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Server dialect.
+
+   The server labels the envelope "type" where this client reads "op", and
+   names the parts of a message from / text / id / ts where this client
+   reads username / content / message_id / timestamp. Translating once here
+   means the rest of the client speaks one language.
+   ═══════════════════════════════════════════════════════════════════════ */
+const OP_ALIASES = { system: "notice" };
+
+function isoTime(v) {
+  if (typeof v === "number") {
+    try { return new Date(v * 1000).toISOString(); } catch { return ""; }
+  }
+  return typeof v === "string" ? v : "";
+}
+
+function normalise(p) {
+  if (!p || typeof p !== "object") return p;
+  p = Object.assign({}, p);
+  if (p.op === undefined) {
+    const kind = p.type || "";
+    if (kind === "list") {
+      p.op = p.what || "channels";
+    } else if (kind === "history" && p.joined && p.channel) {
+      // The server has no "channel_joined" packet: the history it returns on
+      // a join IS the acknowledgement, flagged with "joined". The flag
+      // matters - a reply to /history is the same packet type and must not
+      // clear the pane or re-join anything.
+      p.op = "channel_joined";
+      if (p.history === undefined) p.history = p.messages || [];
+    } else {
+      p.op = OP_ALIASES[kind] || kind;
+    }
+  }
+  if (p.items !== undefined && p[p.op] === undefined) p[p.op] = p.items;
+  if (p.from !== undefined && p.username === undefined)    p.username = p.from;
+  if (p.from_id !== undefined && p.user_id === undefined)   p.user_id = p.from_id;
+  if (p.id !== undefined && p.message_id === undefined)     p.message_id = p.id;
+  if (p.ts !== undefined && p.timestamp === undefined)      p.timestamp = isoTime(p.ts);
+  if (p.text !== undefined) {
+    if (p.content === undefined) p.content = p.text;
+    if (p.message === undefined) p.message = p.text;
+  }
+  for (const key of ["messages", "history", "results"]) {
+    if (Array.isArray(p[key])) p[key] = p[key].map(normalise);
+  }
+  return p;
+}
+
+function send(obj) {
+  if (!S.ws || S.ws.readyState !== WebSocket.OPEN) {
+    line('<span class="bad">!  Not connected.</span>');
+    return;
+  }
+  // The server reads "text"; this client writes "content". Translate on the
+  // way out so both names always arrive.
+  if (obj.content !== undefined && obj.text === undefined) obj.text = obj.content;
+  else if (obj.text !== undefined && obj.content === undefined) obj.content = obj.text;
+  if (obj.op === "users" || obj.op === "channels") obj = { op: "list", what: obj.op };
+  S.ws.send(JSON.stringify(obj));
+}
+
+/* ── the chat pane, one transcript per conversation ────────────────────── */
+function viewKey() {
+  return S.dmMode ? "@" + S.dmTarget : "#" + S.channel;
+}
+
+function line(html, convo) {
+  const key = convo || viewKey();
+  const buf = (S.buffers[key] = S.buffers[key] || []);
+  buf.push(html);
+  if (buf.length > SCROLLBACK) buf.splice(0, buf.length - SCROLLBACK);
+  if (key !== viewKey()) return;
+  const log = $("log");
+  const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+  const el = document.createElement("div");
+  el.className = "l"; el.innerHTML = html;
+  log.appendChild(el);
+  if (atBottom) log.scrollTop = log.scrollHeight;
+}
+
+function showConversation() {
+  const log = $("log");
+  log.replaceChildren();
+  for (const html of S.buffers[viewKey()] || []) {
+    const el = document.createElement("div");
+    el.className = "l"; el.innerHTML = html;
+    log.appendChild(el);
+  }
+  log.scrollTop = log.scrollHeight;
+}
+
+const info = (t) => line(`<span class="info">i  ${t}</span>`);
+const sys  = (t) => line(`<span class="sys">── ${t}</span>`);
+const warn = (t) => line(`<span class="warn">!  ${t}</span>`);
+const bad  = (t) => line(`<span class="bad">[!]  ${t}</span>`);
+const rule = (t) => line(`<span class="rule">── ${t} ${"─".repeat(Math.max(0, 34 - t.length))}</span>`);
+
+function fmtTime(v) {
+  if (!v) return "--:--";
+  const d = new Date(v);
+  if (isNaN(d)) return "--:--";
+  return String(d.getHours()).padStart(2, "0") + ":" +
+         String(d.getMinutes()).padStart(2, "0");
+}
+
+/* ── rendering a message ───────────────────────────────────────────────── */
+function renderMsg(p, convo) {
+  const role = p.role || "user";
+  const sender = p.username || "?";
+  const body = p.content || "";
+  const msgId = p.message_id || p.msg_id || "";
+  const cls = roleClass(role);
+  const mark = ROLE_MARK[role] || "";
+  // The id is what /delete and /edit take, so it has to be visible on
+  // anything you are allowed to delete or edit: your own always, and
+  // everybody's from moderator up.
+  const showId = msgId && (sender === S.username || rank() >= ROLE_RANK.moderator);
+  const idTag = showId ? ` <span class="id">#${esc(msgId.slice(0, 6))}</span>` : "";
+  const channel = p.channel || "";
+  line(
+    `<span class="t">[${fmtTime(p.timestamp)}]</span> ` +
+    (mark ? `<span class="${cls}">${esc(mark)}</span> ` : "") +
+    `<span class="${cls}">${esc(sender)}</span>${idTag}: ` +
+    `<span class="body">${esc(body)}</span>`,
+    convo || (channel ? "#" + channel : undefined)
+  );
+}
+
+function renderDm(p) {
+  const role = p.role || "user";
+  const sender = p.username || "?";
+  // The copy sent to the recipient carries no "to" - the server only puts
+  // one on the sender's echo. An incoming DM without one arrived here, so
+  // the recipient is this account.
+  const target = p.to || S.username;
+  const cls = roleClass(role);
+  const mark = ROLE_MARK[role] || "";
+  const other = sender !== S.username ? sender : target;
+  if (other && !S.dms.includes(other)) { S.dms.push(other); buildRail(); }
+  line(
+    `<span class="t">[${fmtTime(p.timestamp)}]</span> ` +
+    (mark ? `<span class="${cls}">${esc(mark)}</span> ` : "") +
+    `<span class="${cls}">${esc(sender)}</span> → ` +
+    `<span class="${cls}">${esc(target)}</span>: ` +
+    `<span class="body">${esc(p.content || "")}</span>`,
+    other ? "@" + other : undefined
+  );
+  // A direct message that arrives while you are reading a channel should
+  // not land silently in a pane you are not looking at.
+  if (viewKey() !== "@" + other && sender !== S.username) {
+    line(`<span class="info">--  DM from ${esc(sender)} — click @${esc(sender)} to read it</span>`);
+  }
+}
+
+/* ── sidebar ───────────────────────────────────────────────────────────── */
+function buildRail() {
+  const ch = $("rail-channels");
+  ch.replaceChildren();
+  if (!S.channels.length) {
+    ch.innerHTML = '<div class="rail-empty">none yet</div>';
+  } else {
+    for (const name of S.channels) {
+      const el = document.createElement("div");
+      el.className = "rail-item";
+      el.textContent = "#" + name;
+      if (!S.dmMode && name === S.channel) el.setAttribute("aria-current", "true");
+      el.onclick = () => openChannel(name);
+      ch.appendChild(el);
+    }
+  }
+  const dm = $("rail-dms");
+  dm.replaceChildren();
+  if (!S.dms.length) {
+    dm.innerHTML = '<div class="rail-empty">none yet</div>';
+  } else {
+    for (const who of S.dms) {
+      const el = document.createElement("div");
+      el.className = "rail-item";
+      el.textContent = "@" + who;
+      if (S.dmMode && who === S.dmTarget) el.setAttribute("aria-current", "true");
+      el.onclick = () => openDm(who);
+      dm.appendChild(el);
+    }
+  }
+}
+
+function refreshTop() {
+  $("where").textContent = S.dmMode ? "@" + S.dmTarget : "#" + (S.channel || "");
+  $("me").innerHTML =
+    `<span class="${roleClass(S.role)}">${esc(S.username)}</span> ` +
+    `<span class="t">${esc(S.publicId)} · ${esc(S.role)}</span>`;
+  $("input").placeholder = S.dmMode
+    ? `Message @${S.dmTarget}, or /help`
+    : `Message #${S.channel || "…"}, or /help`;
+}
+
+/* On a narrow screen the sidebar is a drawer. Picking something from it
+   closes it again, because on a phone it covers what you just chose. */
+function toggleRail(force) {
+  const app = $("app");
+  const open = force !== undefined ? force : !app.classList.contains("rail-open");
+  app.classList.toggle("rail-open", open);
+  $("rail-toggle").setAttribute("aria-expanded", String(open));
+}
+$("rail-toggle").onclick = () => toggleRail();
+
+function openChannel(name) {
+  if (name !== S.channel) {
+    S.dmMode = false; S.dmTarget = "";
+    send({ op: "join", channel: name });
+  } else if (S.dmMode) {
+    // Coming back to the channel you are already in, from a DM.
+    S.dmMode = false; S.dmTarget = "";
+    refreshTop(); buildRail(); showConversation();
+  }
+  toggleRail(false);
+  $("input").focus();
+}
+
+function openDm(who) {
+  S.dmMode = true; S.dmTarget = who;
+  if (!S.dms.includes(who)) S.dms.push(who);
+  refreshTop(); buildRail(); showConversation();
+  toggleRail(false);
+  $("input").focus();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Incoming packets
+   ═══════════════════════════════════════════════════════════════════════ */
+function dispatch(raw) {
+  const p = normalise(raw);
+  const op = p.op || "";
+
+  switch (op) {
+
+  /* ── chat ───────────────────────────────────────────────────────────── */
+  case "msg":  if (!S.dmMode) renderMsg(p); return;
+  case "dm":   renderDm(p); return;
+  case "msg_edited":  info(`Message [${esc(p.msg_id || "")}] edited.`); return;
+  case "msg_deleted": info(`Message [${esc(p.msg_id || "")}] deleted.`); return;
+  case "announcement":
+    line(`<span class="ann">&gt;&gt;  ANNOUNCEMENT</span>  <span class="warn">${esc(p.text || "")}</span>`);
+    return;
+  case "notice":
+    line(`<span class="info">--  ${esc(p.message || "")}</span>`); return;
+
+  /* ── channels and groups ────────────────────────────────────────────── */
+  case "channel_joined": {
+    const ch = p.channel || "";
+    S.channel = ch; S.dmMode = false; S.dmTarget = "";
+    if (!S.channels.includes(ch)) S.channels.push(ch);
+    // Switching channel clears the pane and loads that channel's own
+    // transcript, rather than letting two conversations interleave.
+    S.buffers["#" + ch] = [];
+    $("log").replaceChildren();
+    refreshTop(); buildRail();
+    sys(`Joined #${ch}`);
+    for (const m of (p.history || p.messages || [])) renderMsg(m, "#" + ch);
+    $("log").scrollTop = $("log").scrollHeight;
+    return;
+  }
+  case "channel_left": {
+    const ch = p.channel || "";
+    sys(`Left #${ch}`);
+    S.channels = S.channels.filter((c) => c !== ch);
+    buildRail();
+    return;
+  }
+  case "channels": {
+    // The server describes each channel as {name, desc, kind}; the sidebar
+    // and this line both want the bare name.
+    const names = (p.channels || [])
+      .map((c) => (c && typeof c === "object" ? c.name : c)).filter(Boolean);
+    S.channels = names; buildRail();
+    info("Channels: " + names.map((n) => "#" + esc(n)).join("  "));
+    return;
+  }
+  case "channel_created": {
+    const ch = p.name || "";
+    info(`Channel #${esc(ch)} created.`);
+    if (!S.channels.includes(ch)) S.channels.push(ch);
+    buildRail();
+    return;
+  }
+  case "groups": {
+    const gs = p.groups || [];
+    if (!gs.length) { info("No groups found."); return; }
+    line('<span class="info">Groups:</span>');
+    for (const g of gs) {
+      line(`  <span class="r-user">${esc(g.name || "?")}</span>  <span class="t">${esc(g.topic || "")}</span>`);
+    }
+    return;
+  }
+  case "group_joined": sys(`Joined group: ${esc(p.group || "?")}`); return;
+
+  /* ── people ─────────────────────────────────────────────────────────── */
+  case "users": {
+    const us = p.users || [];
+    $("online").innerHTML = `<span class="t">${us.length} online</span>`;
+    rule("Online");
+    for (const u of us) {
+      const cls = roleClass(u.role || "user");
+      const mark = ROLE_MARK[u.role] || "";
+      line(`  <span class="${cls}">${esc(mark ? mark + " " : "")}${esc(u.username || "?")}</span>  <span class="t">${esc(u.public_id || "")}</span>`);
+    }
+    return;
+  }
+  case "user_found": {
+    const u = p.user || {};
+    const cls = roleClass(u.role || "user");
+    line(`<span class="info">Found:</span>  <span class="${cls}">${esc(u.username || "?")}</span>  ` +
+         `<span class="t">${esc(u.public_id || "")}</span>  <span class="${cls}">${esc(u.role || "?")}</span>`);
+    return;
+  }
+  case "dms_list": {
+    const cs = p.convos || [];
+    S.dms = cs.map((c) => c.username || "").filter(Boolean);
+    buildRail();
+    if (!cs.length) { info("No DM conversations yet."); return; }
+    for (const c of cs) {
+      line(`  <span class="info">@${esc(c.username || "?")}</span>  <span class="t">${esc(c.last || "")}</span>`);
+    }
+    return;
+  }
+  case "friends_list": {
+    const f = p.friends || [], ri = p.requests_in || [],
+          ro = p.requests_out || [], bl = p.blocked || [];
+    rule("Friends");
+    for (const x of f) {
+      const cls = roleClass(x.role || "user");
+      line(`  <span class="${cls}">${x.favourite ? "* " : ""}${esc(x.username || "?")}</span>`);
+    }
+    if (ri.length) {
+      line('<span class="warn">  Incoming requests:</span>');
+      for (const r of ri) line(`    <span class="r-user">${esc(r)}</span>  (/accept ${esc(r)} or /decline ${esc(r)})`);
+    }
+    if (ro.length) line(`<span class="t">  Sent requests: ${ro.map(esc).join("  ")}</span>`);
+    if (bl.length) line(`<span class="t">  Blocked: ${bl.map(esc).join("  ")}</span>`);
+    if (!f.length && !ri.length && !ro.length && !bl.length) {
+      info("No friends yet. Use /add @user to send a request.");
+    }
+    return;
+  }
+  case "friend_request":
+    line(`<span class="warn">-&gt;  Friend request from <span class="b">${esc(p.from || "?")}</span> -- /accept ${esc(p.from || "?")} or /decline ${esc(p.from || "?")}</span>`);
+    return;
+  case "friend_accepted": info(`${esc(p.user || "?")} accepted your friend request.`); return;
+  case "friend_declined": info(`${esc(p.user || "?")} declined your friend request.`); return;
+  case "blocked_list": {
+    const bl = p.blocked || [];
+    if (!bl.length) info("No blocked users.");
+    else line(`<span class="info">Blocked:</span> ${bl.map(esc).join("  ")}`);
+    return;
+  }
+  case "contact_code":
+    line(`<span class="info">Your contact code:</span>\n  <span class="b">${esc(p.code || "?")}</span>\n  <span class="t">Share this out-of-band for verified contact.</span>`);
+    return;
+  case "verify_result": {
+    const ok = !!p.match;
+    line(`<span class="${ok ? "good" : "bad"}">${ok ? "[ok] Verified" : "[!] Mismatch"}:</span>  <span class="t">${esc(p.safety_number || "?")}</span>`);
+    if (!ok) line(`<span class="t">  Read this number aloud with them, then /trust accept ${esc(p.user || "@user")} &lt;number&gt;</span>`);
+    return;
+  }
+  case "devices_list": {
+    rule("Your Devices");
+    for (const d of (p.devices || [])) {
+      line(`  <span class="r-user">${esc((d.id || "?").slice(0, 8))}</span>  <span class="t">${esc(d.name || "?")}</span>  ${d.current ? '<span class="good">current</span>' : ""}`);
+    }
+    return;
+  }
+  case "trust_list": {
+    rule("Trusted Keys");
+    const es = p.entries || [];
+    if (!es.length) line('<span class="t">  none yet</span>');
+    for (const t of es) {
+      line(`  <span class="r-user">${esc(t.user || "?")}</span>  <span class="t">${esc((t.fingerprint || "?").slice(0, 16))}...</span>`);
+    }
+    return;
+  }
+  case "vault_status":
+    line(`<span class="info">Vault:</span>  ${p.locked ? '<span class="bad">Locked</span>' : '<span class="good">Unlocked</span>'}  <span class="t">${p.size_bytes || 0} bytes</span>`);
+    return;
+  case "pin_set":   info("PIN updated."); return;
+  case "listed_set": info(`Directory listing: ${p.state ? "on" : "off"}.`); return;
+  case "settings_info": {
+    rule("Settings");
+    const st = p.settings || {};
+    for (const k of Object.keys(st)) {
+      line(`  <span class="t">${esc(k)}</span>  <span class="r-user">${esc(String(st[k]))}</span>`);
+    }
+    return;
+  }
+
+  /* ── invites and keys ───────────────────────────────────────────────── */
+  case "invite_created":
+    info(`Invite code: <span class="b">${esc(p.code || "?")}</span>  role=${esc(p.role || "user")}`);
+    return;
+  case "invite_list": {
+    const inv = p.invites || [];
+    if (!inv.length) { info("No active invites."); return; }
+    rule("Active Invites");
+    for (const i of inv) {
+      line(`  <span class="r-user">${esc(i.code || "?")}</span>  <span class="t">${esc(i.role || "?")}  ${esc(i.note || "")}</span>`);
+    }
+    return;
+  }
+  case "invite_revoked": info("Invite revoked."); return;
+  case "rolekeys_list": {
+    const ks = p.keys || [];
+    if (!ks.length) { info("No role-upgrade keys."); return; }
+    rule("Role-Upgrade Keys");
+    for (const k of ks) {
+      line(`  <span class="r-user">${esc(k.key || "?")}</span>  <span class="t">${esc(k.role || "?")}  ${esc(k.note || "")}</span>`);
+    }
+    return;
+  }
+  case "rolekey_created":
+    info(`Role-upgrade key: <span class="b">${esc(p.key || "?")}</span>  → ${esc(p.role || "?")}`);
+    return;
+  case "roleup_ok":
+    S.role = p.new_role || S.role;
+    info(`Role upgraded → <span class="b">${esc(S.role)}</span>`);
+    refreshTop();
+    return;
+
+  /* ── moderation ─────────────────────────────────────────────────────── */
+  case "warn_issued":
+    line(`<span class="warn">!  Warned <span class="b">${esc(p.target || "?")}</span>: ${esc(p.reason || "")}</span>`);
+    return;
+  case "muted":
+    line(`<span class="warn">[mute]  Muted <span class="b">${esc(p.target || "?")}</span> for ${esc(p.duration || "?")}: ${esc(p.reason || "")}</span>`);
+    return;
+  case "unmuted": info(`${esc(p.target || "?")} unmuted.`); return;
+  case "kicked":
+    line(`<span class="warn">[kick]  Kicked <span class="b">${esc(p.target || "?")}</span>: ${esc(p.reason || "")}</span>`);
+    return;
+  case "banned":
+    line(`<span class="bad">[ban]  Banned <span class="b">${esc(p.target || "?")}</span> for ${esc(p.duration || "?")}: ${esc(p.reason || "")}</span>`);
+    return;
+  case "unbanned": info(`${esc(p.target || "?")} unbanned.`); return;
+  case "you_were_muted":
+    line(`<span class="bad">[mute]  You have been muted for ${esc(p.duration || "?")}: ${esc(p.reason || "")}</span>`);
+    return;
+  case "you_were_kicked":
+    line(`<span class="bad">[kick]  You were kicked: ${esc(p.reason || "")}</span>`); return;
+  case "you_were_banned":
+    line(`<span class="bad">[ban]  You have been banned for ${esc(p.duration || "?")}: ${esc(p.reason || "")}</span>`);
+    return;
+  case "promoted": {
+    const target = p.target || "?", nr = p.new_role || "?";
+    if (target === S.username) {
+      S.role = nr; refreshTop();
+      info(`Your role was changed to <span class="b">${esc(nr)}</span>.`);
+    } else {
+      info(`${esc(target)} promoted to ${esc(nr)}.`);
+    }
+    return;
+  }
+  case "reports_list": {
+    const rs = p.reports || [];
+    if (!rs.length) { info("No reports."); return; }
+    rule("Reports");
+    for (const r of rs) {
+      const cls = { open:"warn", closed:"t", actioned:"good" }[r.status] || "r-user";
+      line(`  <span class="${cls}">${esc((r.id || "?").slice(0, 8))}</span>  ` +
+           `<span class="r-user">${esc(r.target || "?")}</span>  ` +
+           `<span class="t">${esc(r.reason || "?")}</span>  ` +
+           `<span class="${cls}">${esc(r.status || "?")}</span>`);
+    }
+    return;
+  }
+  case "report_info": {
+    const r = p.report || {};
+    rule(`Report ${(r.id || "?").slice(0, 8)}`);
+    line(`  Target:  <span class="r-user">${esc(r.target || "?")}</span>`);
+    line(`  Reason:  <span class="r-user">${esc(r.reason || "?")}</span>`);
+    line(`  Detail:  <span class="r-user">${esc(r.detail || "")}</span>`);
+    line(`  Status:  <span class="r-user">${esc(r.status || "?")}</span>`);
+    line(`  By:      <span class="r-user">${esc(r.reporter || "?")}</span>`);
+    return;
+  }
+  case "report_closed":
+    info(`Report ${esc((p.report_id || "?").slice(0, 8))} closed: ${esc(p.outcome || "?")}`); return;
+  case "report_created":
+    info(`Report submitted. ID: ${esc((p.report_id || "?").slice(0, 8))}`); return;
+  case "audit_log": {
+    const es = p.entries || [];
+    if (!es.length) { info("Audit log empty."); return; }
+    rule("Audit Log");
+    for (const e of es) {
+      line(`  <span class="t">[${fmtTime(e.timestamp)}]</span>  <span class="r-user">${esc(e.by || "?")}</span> → ` +
+           `<span class="r-user">${esc(e.action || "?")}</span>  <span class="t">${esc(e.target || "")}</span>`);
+    }
+    return;
+  }
+
+  /* ── account ────────────────────────────────────────────────────────── */
+  case "user_deleted": info(`User ${esc(p.target_id || "?")} deleted.`); return;
+  case "account_deleted":
+    line('<span class="bad">Your account has been permanently deleted.</span>');
+    forgetToken(); setTimeout(() => location.reload(), 1500);
+    return;
+  case "roles_info": {
+    rule("Roles");
+    for (const r of (p.roles || [])) {
+      line(`  <span class="${roleClass(r.name)}">${esc(r.name || "?")}</span>  <span class="t">${esc(r.desc || "")}</span>`);
+    }
+    return;
+  }
+  case "version_info":
+    line(`<span class="info">NEXUS</span>  <span class="r-user">client ${CLIENT_VERSION}  .  server ${esc(p.server_version || "?")}</span>`);
+    return;
+  case "whoami": {
+    const r = p.role || S.role;
+    const cls = roleClass(r);
+    line(`<span class="info">You:</span>  <span class="${cls}">${esc(p.username || S.username)}</span>  ` +
+         `<span class="t">${esc(p.public_id || S.publicId)}</span>  <span class="${cls}">${esc(r)}</span>  ` +
+         `<span class="t">PIN: ${p.pin_set ? "set" : "not set"}</span>`);
+    return;
+  }
+
+  /* ── history and search ─────────────────────────────────────────────── */
+  case "history": {
+    const ms = p.messages || [];
+    if (!ms.length) { info("No history found."); return; }
+    sys(`History (${ms.length})`);
+    for (const m of ms) renderMsg(m, viewKey());
+    return;
+  }
+  case "search_results": {
+    const rs = p.results || [];
+    if (!rs.length) { info("No messages found."); return; }
+    sys(`Search results (${rs.length})`);
+    for (const m of rs) renderMsg(m, viewKey());
+    return;
+  }
+
+  /* ── server ─────────────────────────────────────────────────────────── */
+  case "guardian_alert": {
+    const sev = p.severity || "info";
+    const cls = { critical:"bad", warning:"warn", info:"info" }[sev] || "r-user";
+    line(`<span class="${cls}">[GUARDIAN/${esc(sev.toUpperCase())}]</span> ${esc(p.message || "")}`);
+    return;
+  }
+  case "shutdown_notice":
+    line(`<span class="bad b">!  SERVER SHUTDOWN: ${esc(p.reason || "")}</span>`); return;
+  case "wws_status": {
+    rule("WWS Status");
+    const st = p.status || {};
+    for (const k of Object.keys(st)) {
+      line(`  <span class="t">${esc(k)}:</span> <span class="r-user">${esc(String(st[k]))}</span>`);
+    }
+    return;
+  }
+  case "guardian_stats": case "guardian_events": case "guardian_sessions":
+  case "guardian_acked": case "guardian_watch_ok": case "guardian_lockdown_ok":
+  case "guardian_broadcast_ok": case "backup_done":
+    line(`<span class="t">[guardian] ${esc(JSON.stringify(p))}</span>`); return;
+
+  case "vdkey_result":
+    line(`<span class="info">VoltDeck key for <span class="b">${esc(p.for_user || "?")}</span>:</span>\n  <span class="warn b">${esc(p.key || "?")}</span>\n  <span class="t">${esc(p.note || "")}</span>`);
+    return;
+  case "vdkey_list": {
+    const ks = p.keys || [];
+    if (!ks.length) { info("No VoltDeck keys."); return; }
+    rule("VoltDeck Keys");
+    for (const k of ks) {
+      line(`  <span class="r-user">${esc(k.key_id || "?")}</span>  ${k.active ? '<span class="good">active</span>' : '<span class="bad">revoked</span>'}  <span class="t">${esc(k.label || "")}  ch=${esc(k.channel || "?")}</span>`);
+    }
+    return;
+  }
+  case "vdkey_revoked": info(`VoltDeck key ${esc(p.key_id || "?")} revoked.`); return;
+
+  case "session_displaced": {
+    // Another window took the account. Stop reconnecting FIRST: without
+    // this, both windows would reconnect, displace each other, and ping-pong
+    // forever instead of one of them simply losing.
+    S.closedByUs = true;
+    try { S.ws && S.ws.close(); } catch {}
+    $("taken-why").textContent = p.text ||
+      "You signed in from another window, so this one was signed out.";
+    $("taken").classList.add("show");
+    return;
+  }
+
+  case "pong": info("Pong!"); return;
+  case "error": bad(esc(p.message || "Server error")); return;
+
+  /* Auth packets are handled by the gate, not here. */
+  case "auth_ok": case "registered": return;
+
+  default:
+    // Nothing silently swallowed: an unhandled packet is still shown, so a
+    // protocol gap looks like a protocol gap rather than a broken command.
+    line(`<span class="t">[${esc(op || "?")}] ${esc(JSON.stringify(p))}</span>`);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Commands. The same set, and the same rank gating, as the terminal client.
+   ═══════════════════════════════════════════════════════════════════════ */
+const HELP = [
+  ["Chat",    [
+    ["/join <channel>",        "switch to a channel"],
+    ["/leave [channel]",       "leave a channel"],
+    ["/channels",              "list channels"],
+    ["/history [n]",           "replay this channel"],
+    ["/search <text>",         "search this channel"],
+    ["/me <action>",           "send an action"],
+    ["/edit <id> <text>",      "edit your message"],
+    ["/delete <id>",           "delete a message"],
+    ["/clear",                 "clear this pane"],
+  ]],
+  ["People",  [
+    ["/who",                   "who is online"],
+    ["/whoami",                "your own account"],
+    ["/find <user>",           "look somebody up"],
+    ["/dm @user [text]",       "open or send a DM"],
+    ["/reply <text>",          "reply in this DM"],
+    ["/dms",                   "your conversations"],
+    ["/back",                  "back to the channel"],
+    ["/add @user",             "send a friend request"],
+    ["/accept @user",          "accept one"],
+    ["/decline @user",         "decline one"],
+    ["/unfriend @user",        "remove a friend"],
+    ["/favourite @user",       "star a friend"],
+    ["/friends",               "your friends"],
+    ["/block @user",           "block somebody"],
+    ["/unblock @user",         "unblock them"],
+    ["/blocked",               "who you have blocked"],
+  ]],
+  ["Security", [
+    ["/mycode",                "your contact code"],
+    ["/verify @user",          "safety number"],
+    ["/trust list|accept|forget", "verified contacts"],
+    ["/devices",               "your signed-in devices"],
+    ["/pin <digits>|clear",    "set or clear a PIN"],
+    ["/vault",                 "vault status"],
+    ["/listed on|off",         "appear in /find"],
+    ["/settings [k v]",        "your settings"],
+  ]],
+  ["Groups & channels", [
+    ["/makechannel <name> [topic]", "make your own channel"],
+    ["/mychannel [list|delete]", "channels you made"],
+    ["/groups",                "list groups"],
+    ["/group create|leave|delete", "manage a group"],
+    ["/g <group>",             "join a group"],
+  ]],
+  ["Reporting", [
+    ["/report @user <reason>", "report somebody"],
+    ["/review yes|no <id>",    "answer a read request"],
+  ]],
+  ["Misc", [
+    ["/version",               "client and server version"],
+    ["/ping",                  "round-trip test"],
+    ["/theme",                 "light / dark"],
+    ["/help [all]",            "this list"],
+    ["/logout",                "sign out"],
+  ]],
+];
+
+const HELP_STAFF = [
+  ["Moderation (moderator+)", [
+    ["/warn @user <reason>",   "warn somebody"],
+    ["/mute @user <dur> <why>", "mute them"],
+    ["/unmute @user",          "unmute them"],
+    ["/kick @user [reason]",   "drop their connection"],
+    ["/reports [open]",        "the report queue"],
+    ["/report-view <id>",      "read one"],
+    ["/report-close <id> <outcome>", "close one"],
+  ]],
+  ["Admin (admin+)", [
+    ["/ban @user <dur> <why>", "ban them"],
+    ["/unban @user",           "lift it"],
+    ["/channel new|delete <name> [kind]", "manage channels"],
+    ["/invite [role] [note]",  "mint an invite"],
+    ["/invite list|revoke <id>", "manage invites"],
+    ["/passkey new <user>",    "reset a passkey"],
+    ["/audit [n]",             "the audit log"],
+    ["/backup",                "back the database up"],
+  ]],
+  ["Owner", [
+    ["/promote @user <role>",  "set somebody's rank"],
+    ["/rolekey <role> [note]", "mint an upgrade key"],
+    ["/rolekeys",              "list them"],
+    ["/announce <text>",       "tell everybody"],
+    ["/notice @user <text>",   "tell one person"],
+    ["/wws status",            "beacon status"],
+    ["/shutdown [reason]",     "stop the server"],
+  ]],
+];
+
+function showHelp(all) {
+  for (const [group, rows] of HELP) {
+    rule(group);
+    for (const [cmd, what] of rows) {
+      line(`  <span class="info">${esc(cmd.padEnd(30))}</span><span class="t">${esc(what)}</span>`);
+    }
+  }
+  if (rank() >= ROLE_RANK.moderator || all) {
+    for (const [group, rows] of HELP_STAFF) {
+      rule(group);
+      for (const [cmd, what] of rows) {
+        line(`  <span class="info">${esc(cmd.padEnd(30))}</span><span class="t">${esc(what)}</span>`);
+      }
+    }
+  } else {
+    line('<span class="t">  (/help all also lists the staff commands)</span>');
+  }
+}
+
+const ALL_COMMANDS = (() => {
+  const out = new Set();
+  for (const [, rows] of HELP.concat(HELP_STAFF)) {
+    for (const [cmd] of rows) out.add(cmd.split(" ")[0]);
+  }
+  for (const extra of ["/roleup", "/rc", "/owner", "/vdkey", "/vdkeys",
+                       "/vdrevoke", "/guardian", "/checkupdate", "/update",
+                       "/releasekeys", "/roles", "/joingroup", "/exit",
+                       "/quit", "/q", "/report-msg", "/review-request",
+                       "/review-read", "/delete-account"]) out.add(extra);
+  return [...out].sort();
+})();
+
+function needRank(what, r) {
+  if (rank() < ROLE_RANK[r]) {
+    bad(`${r.charAt(0).toUpperCase() + r.slice(1)}s and above can ${what}.`);
+    return false;
+  }
+  return true;
+}
+
+function handleCommand(text) {
+  const parts = text.trim().split(/\s+/);
+  const cmd = parts[0].toLowerCase();
+  const args = parts.slice(1);
+  const rest = args.join(" ");
+
+  switch (cmd) {
+
+  /* ── chat ───────────────────────────────────────────────────────────── */
+  case "/help": showHelp(args[0] === "all"); return;
+  case "/join":
+    if (!args[0]) return warn("Usage: /join <channel>");
+    S.dmMode = false; S.dmTarget = "";
+    return send({ op: "join", channel: args[0].replace(/^#/, "") });
+  case "/leave":
+    return send({ op: "leave", channel: (args[0] || S.channel).replace(/^#/, "") });
+  case "/channels": return send({ op: "channels" });
+  case "/who":      return send({ op: "users" });
+  case "/history":
+    return send({ op: "history", channel: S.channel,
+                  count: /^\d+$/.test(args[0] || "") ? +args[0] : 50 });
+  case "/search":
+    if (!rest) return warn("Usage: /search <text>");
+    return send({ op: "search", channel: S.channel, query: rest });
+  case "/me":
+    if (!rest) return warn("Usage: /me <action>");
+    return send({ op: "msg", channel: S.channel, content: `* ${S.username} ${rest}` });
+  case "/edit":
+    if (args.length < 2) return warn("Usage: /edit <id> <new text>");
+    return send({ op: "edit_msg", msg_id: args[0], content: args.slice(1).join(" ") });
+  case "/delete":
+    if (!args[0]) return warn("Usage: /delete <message_id>");
+    return send({ op: "delete_msg", msg_id: args[0] });
+  case "/clear":
+    S.buffers[viewKey()] = []; $("log").replaceChildren(); return;
+
+  /* ── people ─────────────────────────────────────────────────────────── */
+  case "/whoami": return send({ op: "whoami" });
+  case "/roles":  return send({ op: "roles" });
+  case "/find":
+    if (!args[0]) return warn("Usage: /find <user>");
+    return send({ op: "find_user", query: args[0].replace(/^@/, "") });
+  case "/dm": {
+    if (!args[0]) return warn("Usage: /dm @user [message]");
+    const who = args[0].replace(/^@/, "");
+    const body = args.slice(1).join(" ");
+    openDm(who);
+    if (body) send({ op: "dm", to: who, content: body });
+    return;
+  }
+  case "/reply":
+    if (!S.dmMode) return warn("/reply only works inside a DM. /dm @user first.");
+    if (!rest) return warn("Usage: /reply <text>");
+    return send({ op: "dm", to: S.dmTarget, content: rest });
+  case "/dms":  return send({ op: "dms" });
+  case "/back":
+    S.dmMode = false; S.dmTarget = "";
+    refreshTop(); buildRail(); showConversation(); return;
+  case "/add":
+    if (!args[0]) return warn("Usage: /add @user");
+    return send({ op: "add_friend", target: args[0].replace(/^@/, "") });
+  case "/accept":
+    if (!args[0]) return warn("Usage: /accept @user");
+    return send({ op: "accept_friend", target: args[0].replace(/^@/, "") });
+  case "/decline":
+    if (!args[0]) return warn("Usage: /decline @user");
+    return send({ op: "decline_friend", target: args[0].replace(/^@/, "") });
+  case "/unfriend":
+    if (!args[0]) return warn("Usage: /unfriend @user");
+    return send({ op: "unfriend", target: args[0].replace(/^@/, "") });
+  case "/favourite":
+    if (!args[0]) return warn("Usage: /favourite @user");
+    return send({ op: "favourite", target: args[0].replace(/^@/, "") });
+  case "/friends": return send({ op: "friends" });
+  case "/block":
+    if (!args[0]) return warn("Usage: /block @user");
+    return send({ op: "block", target: args[0].replace(/^@/, "") });
+  case "/unblock":
+    if (!args[0]) return warn("Usage: /unblock @user");
+    return send({ op: "unblock", target: args[0].replace(/^@/, "") });
+  case "/blocked": return send({ op: "blocked" });
+
+  /* ── security ───────────────────────────────────────────────────────── */
+  case "/mycode": return send({ op: "mycode" });
+  case "/verify":
+    if (!args[0]) return warn("Usage: /verify @user");
+    return send({ op: "verify", target: args[0].replace(/^@/, "") });
+  case "/trust": {
+    const a = (args[0] || "list").toLowerCase();
+    if (a === "list") return send({ op: "trust", action: "list" });
+    if (a === "accept") {
+      if (args.length < 3) return warn("Usage: /trust accept @user <safety number>");
+      return send({ op: "trust", action: "accept",
+                    target: args[1].replace(/^@/, ""), code: args.slice(2).join(" ") });
+    }
+    if (a === "forget") {
+      if (!args[1]) return warn("Usage: /trust forget @user");
+      return send({ op: "trust", action: "forget", target: args[1].replace(/^@/, "") });
+    }
+    return warn("Usage: /trust list|accept|forget");
+  }
+  case "/devices": {
+    const a = (args[0] || "list").toLowerCase();
+    if (a === "list") return send({ op: "devices", action: "list" });
+    if (a === "rename") {
+      if (args.length < 3) return warn("Usage: /devices rename <id> <name>");
+      return send({ op: "devices", action: "rename", device_id: args[1],
+                    name: args.slice(2).join(" ") });
+    }
+    if (a === "revoke") {
+      if (!args[1]) return warn("Usage: /devices revoke <id>");
+      return send({ op: "devices", action: "revoke", device_id: args[1] });
+    }
+    if (a === "revoke-others" || a === "revoke_others") {
+      return send({ op: "devices", action: "revoke_others" });
+    }
+    return warn("Usage: /devices list|rename|revoke|revoke-others");
+  }
+  case "/pin": {
+    const a = (args[0] || "").toLowerCase();
+    if (a === "clear") return send({ op: "set_pin", action: "clear" });
+    if (/^\d+$/.test(a)) return send({ op: "set_pin", pin: a });
+    return warn("Usage: /pin <digits>  or  /pin clear");
+  }
+  case "/vault":       return send({ op: "vault", action: args[0] || "status" });
+  case "/releasekeys": return send({ op: "releasekeys" });
+  case "/listed":
+    if (!args[0]) return warn("Usage: /listed on|off");
+    return send({ op: "set_listed", state: args[0].toLowerCase() === "on" });
+  case "/settings":    return send({ op: "settings", args });
+
+  /* ── groups and channels ────────────────────────────────────────────── */
+  case "/makechannel":
+    if (!args[0]) return warn("Usage: /makechannel <name> [topic]");
+    return send({ op: "makechannel", name: args[0].replace(/^#/, ""),
+                  topic: args.slice(1).join(" ") });
+  case "/mychannel":
+    return send({ op: "mychannel", action: (args[0] || "info").toLowerCase(),
+                  name: args[1] || "" });
+  case "/groups": return send({ op: "groups" });
+  case "/g": case "/joingroup":
+    if (!args[0]) return warn("Usage: /g <group>");
+    return send({ op: "join_group", group: args[0] });
+  case "/group":
+    if (!args[0]) return warn("Usage: /group create|leave|delete <name>");
+    return send({ op: "group", action: args[0].toLowerCase(), args: args.slice(1) });
+  case "/channel":
+    if (!needRank("manage channels", "admin")) return;
+    if (args.length < 2) return warn("Usage: /channel new|delete <name> [kind]");
+    return send({ op: "channel_admin", action: args[0], name: args[1],
+                  kind: args[2] || "public" });
+
+  /* ── reporting ──────────────────────────────────────────────────────── */
+  case "/report":
+    if (args.length < 2) return warn("Usage: /report @user <reason> [detail]");
+    return send({ op: "report", target: args[0].replace(/^@/, ""),
+                  reason: args[1], detail: args.slice(2).join(" ") });
+  case "/report-msg":
+    if (args.length < 2) return warn("Usage: /report-msg <id> <reason>");
+    return send({ op: "report_msg", msg_id: args[0], reason: args.slice(1).join(" ") });
+  case "/review":
+    if (args.length < 2) return warn("Usage: /review yes|no <request-id>");
+    return send({ op: "review", answer: args[0].toLowerCase(), request_id: args[1] });
+  case "/reports":
+    if (!needRank("view reports", "moderator")) return;
+    return send({ op: "reports", filter: args[0] || "" });
+  case "/report-view":
+    if (!needRank("view reports", "moderator")) return;
+    if (!args[0]) return warn("Usage: /report-view <id>");
+    return send({ op: "report_view", report_id: args[0] });
+  case "/report-close":
+    if (!needRank("close reports", "moderator")) return;
+    if (args.length < 2) return warn("Usage: /report-close <id> <outcome>");
+    return send({ op: "report_close", report_id: args[0],
+                  outcome: args.slice(1).join(" ") });
+  case "/review-request":
+    if (!needRank("request reviews", "moderator")) return;
+    if (args.length < 2) return warn("Usage: /review-request <report-id> @user");
+    return send({ op: "review_request", report_id: args[0],
+                  target: args[1].replace(/^@/, "") });
+  case "/review-read":
+    if (!needRank("read review contexts", "admin")) return;
+    if (args.length < 2) return warn("Usage: /review-read <report-id> @user");
+    return send({ op: "review_read", report_id: args[0],
+                  target: args[1].replace(/^@/, "") });
+
+  /* ── moderation ─────────────────────────────────────────────────────── */
+  case "/warn":
+    if (!needRank("warn users", "moderator")) return;
+    if (args.length < 2) return warn("Usage: /warn @user <reason>");
+    return send({ op: "warn", target: args[0].replace(/^@/, ""),
+                  reason: args.slice(1).join(" ") });
+  case "/mute": {
+    if (!needRank("mute users", "moderator")) return;
+    if (!args[0]) return warn("Usage: /mute @user [duration] [reason]");
+    const dur = args[1] && /^\d+[smhdw]?$/i.test(args[1]) ? args[1] : "1h";
+    const why = (args[1] === dur ? args.slice(2) : args.slice(1)).join(" ");
+    return send({ op: "mute", target: args[0].replace(/^@/, ""),
+                  duration: dur, reason: why });
+  }
+  case "/unmute":
+    if (!needRank("unmute users", "moderator")) return;
+    if (!args[0]) return warn("Usage: /unmute @user");
+    return send({ op: "unmute", target: args[0].replace(/^@/, "") });
+  case "/kick":
+    if (!needRank("kick users", "moderator")) return;
+    if (!args[0]) return warn("Usage: /kick @user [reason]");
+    return send({ op: "kick", target: args[0].replace(/^@/, ""),
+                  reason: args.slice(1).join(" ") });
+  case "/ban": {
+    if (!needRank("ban users", "admin")) return;
+    if (!args[0]) return warn("Usage: /ban @user [duration] [reason]");
+    const dur = args[1] && /^\d+[smhdw]?$/i.test(args[1]) ? args[1] : "forever";
+    const why = (args[1] === dur ? args.slice(2) : args.slice(1)).join(" ");
+    return send({ op: "ban", target: args[0].replace(/^@/, ""),
+                  duration: dur, reason: why });
+  }
+  case "/unban":
+    if (!needRank("unban users", "admin")) return;
+    if (!args[0]) return warn("Usage: /unban @user");
+    return send({ op: "unban", target: args[0].replace(/^@/, "") });
+
+  /* ── running the server ─────────────────────────────────────────────── */
+  case "/promote":
+    if (!needRank("promote users", "owner")) return;
+    if (args.length < 2) return warn("Usage: /promote @user <role>");
+    return send({ op: "promote", target: args[0].replace(/^@/, ""), role: args[1] });
+  case "/rolekey":
+    if (!needRank("create role keys", "owner")) return;
+    if (!args[0]) return warn("Usage: /rolekey <role> [note]");
+    return send({ op: "rolekey", role: args[0], note: args.slice(1).join(" ") });
+  case "/rolekeys":
+    if (!needRank("list role keys", "owner")) return;
+    return send({ op: "rolekeys" });
+  case "/invite": {
+    if (!needRank("mint invites", "helper")) return;
+    const a = (args[0] || "").toLowerCase();
+    if (a === "list") return send({ op: "invite", action: "list" });
+    if (a === "revoke") {
+      if (!args[1]) return warn("Usage: /invite revoke <code>");
+      return send({ op: "invite", action: "revoke", code: args[1] });
+    }
+    const allowed = { helper:["user"], moderator:["user","helper"],
+                      admin:["user","helper","moderator"],
+                      owner:["user","helper","moderator","admin"],
+                      system:["user","helper","moderator","admin","owner"] };
+    const ok = allowed[S.role] || [];
+    let role = "user", note = "";
+    if (a && ok.includes(a)) { role = a; note = args.slice(1).join(" "); }
+    else if (a && a !== "user") return bad(`You can only mint invites for: ${ok.join(", ")}`);
+    else note = args.slice(a ? 1 : 0).join(" ");
+    return send({ op: "invite", action: "create", role, note });
+  }
+  case "/passkey":
+    if (!needRank("manage passkeys", "admin")) return;
+    if (!args[0]) return warn("Usage: /passkey new <user>");
+    return send({ op: "passkey_admin", action: args[0], args: args.slice(1) });
+  case "/audit":
+    if (!needRank("view the audit log", "admin")) return;
+    return send({ op: "audit", count: /^\d+$/.test(args[0] || "") ? +args[0] : 25 });
+  case "/announce":
+    if (!needRank("announce", "owner")) return;
+    if (!rest) return warn("Usage: /announce <text>");
+    return send({ op: "announce", text: rest });
+  case "/notice":
+    if (!needRank("send notices", "moderator")) return;
+    if (!args.length) return warn("Usage: /notice @user <text>  or  /notice all <text>");
+    if (args[0].toLowerCase() === "all") {
+      return send({ op: "notice", target: "", text: args.slice(1).join(" ") });
+    }
+    return send({ op: "notice", target: args[0].replace(/^@/, ""),
+                  text: args.slice(1).join(" ") });
+  case "/wws":
+    if (!needRank("manage WWS", "owner")) return;
+    return send({ op: "wws", action: args[0] || "status", args: args.slice(1) });
+  case "/backup":
+    if (!needRank("back the database up", "admin")) return;
+    return send({ op: "backup" });
+  case "/shutdown":
+    if (!needRank("stop the server", "owner")) return;
+    if (!confirm("Stop the NEXUS server for everybody?")) return;
+    return send({ op: "shutdown", reason: rest || "Manual shutdown" });
+
+  /* ── keys, updates, account ─────────────────────────────────────────── */
+  case "/roleup": case "/rc":
+    if (!args[0]) return warn("Usage: /roleup <NX-UP-…>");
+    return send({ op: "roleup", key: args[0] });
+  case "/checkupdate": return send({ op: "checkupdate" });
+  case "/update":      return send({ op: "update", apply: args[0] === "now" });
+  case "/version":     return send({ op: "version" });
+  case "/ping":        return send({ op: "ping" });
+  case "/vdkey":
+    if (!needRank("create VoltDeck keys", "admin")) return;
+    if (!args[0]) return warn("Usage: /vdkey @user [channel] [label]");
+    return send({ op: "vdkey_create", target: args[0].replace(/^@/, ""),
+                  channel: args[1] || "voltdeck", label: args.slice(2).join(" ") });
+  case "/vdkeys":
+    if (!needRank("list VoltDeck keys", "admin")) return;
+    return send({ op: "vdkey_list", target: (args[0] || "").replace(/^@/, "") });
+  case "/vdrevoke":
+    if (!needRank("revoke VoltDeck keys", "admin")) return;
+    if (!args[0]) return warn("Usage: /vdrevoke <key_id>");
+    return send({ op: "vdkey_revoke", key_id: args[0] });
+  case "/delete-account": {
+    if (!args[0]) return warn("Usage: /delete-account <your passkey>");
+    if (!confirm("Permanently delete your account? This cannot be undone.")) return;
+    return send({ op: "delete_account", passkey: args[0] });
+  }
+  case "/owner":
+    if (!needRank("transfer ownership", "owner")) return;
+    return send({ op: "owner_transfer", action: (args[0] || "info").toLowerCase(),
+                  target: (args[1] || "").replace(/^@/, "") });
+  case "/guardian":
+    if (!needRank("use Guardian", "owner")) return;
+    return send({ op: "guardian_" + (args[0] || "stats") });
+
+  /* ── local ──────────────────────────────────────────────────────────── */
+  case "/theme": {
+    const now = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = now;
+    try { localStorage.setItem("nexus.theme", now); } catch {}
+    info(`Theme: ${now}. (The web client's light theme is minimal — dark is the designed one.)`);
+    return;
+  }
+  case "/logout": case "/exit": case "/quit": case "/q":
+    forgetToken(); S.closedByUs = true;
+    if (S.ws) S.ws.close();
+    location.reload();
+    return;
+
+  default:
+    warn(`Unknown command: ${esc(cmd)}  (type /help)`);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Input: history, tab completion, submit
+   ═══════════════════════════════════════════════════════════════════════ */
+function onSubmit() {
+  const el = $("input");
+  const text = el.value;
+  if (!text.trim()) return;
+  el.value = "";
+  S.history.push(text); S.historyAt = -1;
+  if (S.history.length > 200) S.history.shift();
+
+  if (text.startsWith("/")) { handleCommand(text); return; }
+  if (S.dmMode) send({ op: "dm", to: S.dmTarget, content: text });
+  else if (!S.channel) warn("You are not in a channel. /join general");
+  else send({ op: "msg", channel: S.channel, content: text });
+}
+
+function complete() {
+  const el = $("input");
+  const value = el.value;
+  if (!value.startsWith("/") || value.includes(" ")) {
+    // Complete a username after @ instead.
+    const at = value.lastIndexOf("@");
+    if (at === -1) return;
+    const stub = value.slice(at + 1).toLowerCase();
+    const pool = [...new Set(S.dms.concat(S.username))];
+    const hits = pool.filter((n) => n.toLowerCase().startsWith(stub));
+    if (hits.length === 1) el.value = value.slice(0, at + 1) + hits[0] + " ";
+    else if (hits.length > 1) line(`<span class="t">  ${hits.map(esc).join("  ")}</span>`);
+    return;
+  }
+  const hits = ALL_COMMANDS.filter((c) => c.startsWith(value.toLowerCase()));
+  if (hits.length === 1) el.value = hits[0] + " ";
+  else if (hits.length > 1) line(`<span class="t">  ${hits.map(esc).join("  ")}</span>`);
+}
+
+/* The input keeps focus the whole time, so the keys that normally scroll a
+   page reach the text box instead of the transcript. Forward them. */
+const SCROLL_KEYS = {
+  PageUp:   (log) => log.scrollTop - (log.clientHeight * 0.9),
+  PageDown: (log) => log.scrollTop + (log.clientHeight * 0.9),
+  Home:     () => 0,
+  End:      (log) => log.scrollHeight,
+};
+
+$("input").addEventListener("keydown", (ev) => {
+  // Shift+PageUp etc. so plain Home/End still move the text cursor, which
+  // is what they should do inside a box you are typing in.
+  const scroller = SCROLL_KEYS[ev.key];
+  if (scroller && (ev.shiftKey || ev.key.startsWith("Page"))) {
+    ev.preventDefault();
+    const log = $("log");
+    log.scrollTop = scroller(log);
+    return;
+  }
+  if (ev.key === "Enter") { ev.preventDefault(); onSubmit(); return; }
+  if (ev.key === "Tab")   { ev.preventDefault(); complete(); return; }
+  if (ev.key === "Escape") {
+    if (S.dmMode) { ev.preventDefault(); handleCommand("/back"); }
+    return;
+  }
+  if (ev.key === "ArrowUp") {
+    if (!S.history.length) return;
+    ev.preventDefault();
+    S.historyAt = S.historyAt < 0 ? S.history.length - 1 : Math.max(0, S.historyAt - 1);
+    $("input").value = S.history[S.historyAt];
+    return;
+  }
+  if (ev.key === "ArrowDown") {
+    if (S.historyAt < 0) return;
+    ev.preventDefault();
+    S.historyAt++;
+    if (S.historyAt >= S.history.length) { S.historyAt = -1; $("input").value = ""; }
+    else $("input").value = S.history[S.historyAt];
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Connecting and signing in
+   ═══════════════════════════════════════════════════════════════════════ */
+const WS_URL = (location.protocol === "https:" ? "wss://" : "ws://") +
+               (location.host || "127.0.0.1:8765");
+
+const TOKEN_KEY = "nexus.token." + (location.host || "local");
+
+function rememberToken(t) { try { localStorage.setItem(TOKEN_KEY, t); } catch {} }
+function savedToken()     { try { return localStorage.getItem(TOKEN_KEY); } catch { return null; } }
+function forgetToken()    { try { localStorage.removeItem(TOKEN_KEY); } catch {} }
+
+const gateProblem = (t) => { $("gate-problem").textContent = t; };
+const gateNote    = (t) => { $("gate-note").innerHTML = t; };
+const gateSub     = (t) => { $("gate-sub").textContent = t; };
+
+$("tab-signin").onclick = () => {
+  $("tab-signin").setAttribute("aria-selected", "true");
+  $("tab-register").setAttribute("aria-selected", "false");
+  $("form-signin").hidden = false; $("form-register").hidden = true;
+  gateProblem(""); $("pk").focus();
+};
+$("tab-register").onclick = () => {
+  $("tab-register").setAttribute("aria-selected", "true");
+  $("tab-signin").setAttribute("aria-selected", "false");
+  $("form-register").hidden = false; $("form-signin").hidden = true;
+  gateProblem(""); $("inv").focus();
+};
+
+$("form-signin").onsubmit = (ev) => {
+  ev.preventDefault();
+  const pk = $("pk").value.trim();
+  if (!pk) return gateProblem("Enter your passkey.");
+  if (!/^NX-/i.test(pk)) {
+    return gateProblem("A passkey starts with NX-. An invite starts with TEMP- — use the other tab.");
+  }
+  gateProblem(""); gateSub("Signing in…");
+  send({ op: "auth", passkey: pk });
+};
+
+$("form-register").onsubmit = (ev) => {
+  ev.preventDefault();
+  const inv = $("inv").value.trim(), un = $("un").value.trim();
+  if (!inv) return gateProblem("Enter your invite code.");
+  if (!un)  return gateProblem("Choose a username.");
+  gateProblem(""); gateSub("Creating your account…");
+  send({ op: "register", invite: inv, username: un });
+};
+
+/* The passkey is shown in a modal rather than written into the chat pane.
+   Writing it to the pane loses it: the join that follows immediately
+   afterwards clears the pane and loads the channel's own transcript, so a
+   newly registered person never saw the one credential that lets them sign
+   in again. A modal survives that, and will not close until they say they
+   have saved it. */
+function showPasskeyOnce(passkey, username, done) {
+  $("keyout-key").textContent = passkey;
+  $("keyout").classList.add("show");
+
+  $("keyout-copy").onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(passkey);
+      $("keyout-copy").textContent = "Copied";
+    } catch {
+      // Clipboard access is refused in plenty of ordinary situations, so
+      // select the text instead of claiming it worked.
+      const r = document.createRange();
+      r.selectNodeContents($("keyout-key"));
+      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      $("keyout-copy").textContent = "Selected — press Ctrl/Cmd+C";
+    }
+  };
+
+  $("keyout-save").onclick = () => {
+    const body =
+      `NEXUS passkey for ${username}\n\n${passkey}\n\n` +
+      `This is the only copy. It cannot be recovered or reset.\n` +
+      `Keep this file somewhere only you can read.\n`;
+    const url = URL.createObjectURL(new Blob([body], { type: "text/plain" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = `nexus-passkey-${username}.txt`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  };
+
+  $("keyout-ack").onchange = () => {
+    $("keyout-go").disabled = !$("keyout-ack").checked;
+  };
+  $("keyout-go").onclick = () => {
+    $("keyout").classList.remove("show");
+    $("keyout-key").textContent = "";   // not left sitting in the DOM
+    done();
+  };
+}
+
+function enterApp(p, isNew) {
+  S.username = p.username || "";
+  S.publicId = p.public_id || "";
+  S.role = p.role || "user";
+  S.token = p.token || null;
+  S.channels = p.channels || [];
+  if (S.token && ($("keep").checked || isNew)) rememberToken(S.token);
+
+  $("gate").style.display = "none";
+  $("app").classList.add("live");
+  refreshTop(); buildRail();
+
+  const start = () => {
+    info(`Signed in as ${esc(S.username)} (${esc(S.role)}). Type /help for commands.`);
+    send({ op: "join", channel: S.channels.includes("general") ? "general"
+                                : (S.channels[0] || "general") });
+    send({ op: "dms" });
+    $("input").focus();
+  };
+
+  if (isNew && p.passkey) showPasskeyOnce(p.passkey, S.username, start);
+  else start();
+}
+
+function setStatus(t) { $("status").textContent = t; }
+
+function connect() {
+  setStatus("Connecting…");
+  let ws;
+  try { ws = new WebSocket(WS_URL); }
+  catch (err) { gateProblem("Could not open a connection: " + err.message); return; }
+  S.ws = ws;
+
+  ws.onopen = () => {
+    S.reconnectIn = 1000;
+    setStatus(`Connected to ${WS_URL}`);
+    const signedIn = $("app").classList.contains("live");
+    if (signedIn && S.token) {
+      // Reconnecting after a drop: the token signs us back in silently.
+      send({ op: "auth", token: S.token });
+      return;
+    }
+    const token = savedToken();
+    if (token && !signedIn) {
+      gateSub("Signing you back in…");
+      send({ op: "auth", token });
+      return;
+    }
+    gateSub(`Connected to ${WS_URL}`);
+    gateNote("Your passkey never leaves this machine except to this server, " +
+             "and is never stored by the browser — only the session token is.");
+    $("pk").focus();
+  };
+
+  ws.onmessage = (ev) => {
+    let p;
+    try { p = JSON.parse(ev.data); } catch { return; }
+    const kind = p.type || "";
+    const signedIn = $("app").classList.contains("live");
+
+    if (kind === "auth_ok")    { enterApp(p, false); return; }
+    if (kind === "registered") { enterApp(p, true);  return; }
+
+    if (!signedIn && kind === "error") {
+      // An expired saved token should put the sign-in form back, not an
+      // error the person cannot act on.
+      if (p.code === "BAD_TOKEN") {
+        forgetToken();
+        gateSub("Your saved session expired. Sign in with your passkey.");
+        gateProblem("");
+        $("pk").focus();
+        return;
+      }
+      gateSub(`Connected to ${WS_URL}`);
+      gateProblem(p.text || "Sign-in failed.");
+      return;
+    }
+    dispatch(p);
+  };
+
+  ws.onclose = () => {
+    if (S.closedByUs) return;
+    const signedIn = $("app").classList.contains("live");
+    setStatus("Disconnected — reconnecting…");
+    if (signedIn) line('<span class="warn">!  Connection lost. Reconnecting…</span>');
+    else gateSub("Disconnected. Retrying…");
+    setTimeout(connect, S.reconnectIn);
+    S.reconnectIn = Math.min(S.reconnectIn * 2, 15000);
+  };
+
+  ws.onerror = () => {
+    if (!$("app").classList.contains("live")) {
+      gateProblem(`Could not reach the server at ${WS_URL}. Is it running?`);
+    }
+  };
+}
+
+/* Reloading signs in again, which displaces whichever window currently
+   holds the account - so the button means "take it back here". */
+$("taken-go").onclick = () => location.reload();
+
+try {
+  const saved = localStorage.getItem("nexus.theme");
+  if (saved) document.documentElement.dataset.theme = saved;
+} catch {}
+
+connect();
+</script>
+</body>
+</html>

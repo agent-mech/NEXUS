@@ -1,0 +1,21 @@
+# Local state. None of this belongs in a repository.
+nexus_session.json
+nexus_known_hosts.json
+
+# Keys and certificates of your own, if you ever add any. A certificate
+# (.pem) is public; a key is not, and once pushed it stays in the history
+# of every clone and fork.
+*.key
+*-key.pem
+
+# Anything a server would leave behind, in case one ever runs here.
+*.db
+*.db-wal
+*.db-shm
+*.bak
+
+.venv/
+venv/
+__pycache__/
+*.pyc
+.DS_Store
